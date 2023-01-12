@@ -34,7 +34,7 @@ void* handle_connection(void* fd_ptr) {
     int fd = *((int*)fd_ptr);
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-
+    while(1) {
     // wzięcie IP klienta
     getpeername(fd, (struct sockaddr*)&client_addr, &client_len);
     char client_ip[INET_ADDRSTRLEN];
@@ -88,7 +88,7 @@ if (bytes_received > 0) {
     }
 }
 
-
+}
 // zamknięcie połączenia
 close(fd);
 pthread_exit(NULL);
