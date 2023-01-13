@@ -18,6 +18,7 @@ typedef struct
     char to[256];
     char message[1024];
 } Email;
+pthread_mutex_t mailBox_mutex = PTHREAD_MUTEX_INITIALIZER;
 Email mailBox[MAX_CONNECTIONS]; // Przechowywanie tablicy z wiadomościami e-maill
 int mailCount = 0;              // zmienna przechowująca ilośc maili w tablicy
 
@@ -28,6 +29,7 @@ typedef struct
     char ip[INET_ADDRSTRLEN];
     int sock_fd;
 } User;
+pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
 User users[MAX_CONNECTIONS]; // tablica użytkowników
 int userCount = 0;           // przechowanie ilości użytkowników
 
@@ -63,7 +65,9 @@ void *handle_connection(void *fd_ptr)
             strcpy(user.username, username);
             strcpy(user.ip, client_ip);
             user.sock_fd = fd;
+            pthread_mutex_lock(&users_mutex);
             users[userCount++] = user;
+            pthread_mutex_unlock(&users_mutex);
             printf("%s logged in\n", username);
         }
         // wiadomość powodzenia logowania
@@ -87,7 +91,9 @@ void *handle_connection(void *fd_ptr)
             sscanf(buffer, "From: %s\nTo: %s\n%s", email.from, email.to, email.message);
 
             // przypisanie maila do tablicy
+            pthread_mutex_lock(&mailBox_mutex);
             mailBox[mailCount++] = email;
+            pthread_mutex_unlock(&mailBox_mutex);
 
             // wysłanie wiadomości potwierdzającej otrzymanie maila przez serwer
             char response[] = "Mail has been received and stored";
