@@ -124,6 +124,9 @@ void *handle_connection(void *fd_ptr)
             }
         }
     }
+    //usunięcie mutexów
+    pthread_mutex_destroy(&mailBox_mutex);
+    pthread_mutex_destroy(&users_mutex); 
     // zamknięcie połączenia
     close(fd);
     pthread_exit(NULL);
