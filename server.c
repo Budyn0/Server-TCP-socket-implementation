@@ -124,6 +124,8 @@ void *handle_connection(void *fd_ptr)
             }
         }
     }
+    //mutex sam się zwolni ale zwolni się po zakończeniu programu więc chyba to potrzebuje tutaj nie? Bo to jest pętla i on będzie ciągle w tej pętli miał tego mutexa
+    //no chyba że go usunę tutaj po zakończeniu pętli
     //usunięcie mutexów
     pthread_mutex_destroy(&mailBox_mutex);
     pthread_mutex_destroy(&users_mutex); 
