@@ -106,7 +106,6 @@ void *handle_connection(void *fd_ptr)
                     mailBox[j] = mailBox[j + 1];
                 }
                 mailCount--;
-                break;
             }
         }
         pthread_mutex_unlock(&mailBox_mutex);
