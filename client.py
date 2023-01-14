@@ -34,19 +34,8 @@ while True:
     # Odczytanie wiadomości e-mail
     elif choice == '2':
         client_socket.sendall(b'READ')
-        email_string = client_socket.recv(1024).decode()
-        if email_string != "No new mail":
-            email_parts = email_string.split("\n")
-            email = {
-                "From": email_parts[0],
-                "To": email_parts[1],
-                "Message": email_parts[2]
-            }
-            print("From: ", email["From"])
-            print("To: ", email["To"])
-            print("Message: ", email["Message"])
-        else:
-            print(email_string)
+        email = client_socket.recv(1024).decode()
+        print(email)
     # Wyjście
     elif choice == '3':
         client_socket.sendall(b'EXIT')
