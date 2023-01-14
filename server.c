@@ -110,12 +110,10 @@ void *handle_connection(void *fd_ptr)
         }
         pthread_mutex_unlock(&mailBox_mutex);
     }
-    
     // zamknięcie połączenia
     close(fd);
     pthread_exit(NULL);
 }
-
 
 
 int main()
@@ -123,7 +121,6 @@ int main()
     int sock_fd, new_sock_fd;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_len;
-    char command[1024];
 
     // tworzenie socketu
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -173,29 +170,5 @@ int main()
             close(new_sock_fd);
         }
     }
-
-    /* pętla komend
-    while (1) {
-        printf("Enter command (list, send <index>): ");
-        scanf("%s", command);
-        if (strcmp(command, "list") == 0) {
-            // Lista e-maili
-            for (int i = 0; i < mailCount; i++) {
-                printf("%d: From: %s To: %s Message: %s\n", i, mailBox[i].from, mailBox[i].to, mailBox[i].message);
-            }
-        } else if (strncmp(command, "send", 4) == 0) {
-            int index;
-            sscanf(command, "send %d", &index);
-            if (index >= 0 && index < mailCount) {
-                // Wysłanie e-maila
-                char response[1024];
-                snprintf(response, sizeof(response), "From: %s To: %s Message: %s", mailBox[index].from, mailBox[index].to, mailBox[index].message);
-                send(new_sock_fd, response, strlen(response), 0);
-            } else {
-                printf("Invalid email index\n");
-            }
-        }
-    }
-    */
     return 0;
 }
