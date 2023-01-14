@@ -46,8 +46,6 @@ void *handle_connection(void *fd_ptr)
     inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
     printf("Connection from %s\n", client_ip);
     // Login
-    if (strncmp(client_ip, "login", 5) == 0)
-    {
         char username[256];
         int bytes_received = recv(fd, username, sizeof(username), 0);
         if (bytes_received > 0)
@@ -63,7 +61,6 @@ void *handle_connection(void *fd_ptr)
         // wiadomość powodzenia logowania
         char success[] = "login successful\n";
         send(fd, success, strlen(success), 0);
-    }
     // Test if the socket is in non-blocking mode:
     if (fcntl(fd, F_GETFL) & O_NONBLOCK)
     {
@@ -107,9 +104,13 @@ void *handle_connection(void *fd_ptr)
                     send(fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
                     for (int j = i; j < mailCount - 1; j++)
                     {
+                        pthread_mutex_lock(&mailBox_mutex);
                         mailBox[j] = mailBox[j + 1];
+                        pthread_mutex_unlock(&mailBox_mutex);
                     }
+                    pthread_mutex_lock(&mailBox_mutex);
                     mailCount--;
+                    pthread_mutex_unlock(&mailBox_mutex);
                     break;
                 }
                 printf("Sent email to %s\n", user.username);
@@ -118,7 +119,7 @@ void *handle_connection(void *fd_ptr)
             break;
         }
     }
-   
+
     // zamknięcie połączenia
     close(fd);
     pthread_exit(NULL);
