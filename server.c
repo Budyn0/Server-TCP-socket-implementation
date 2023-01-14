@@ -38,17 +38,7 @@ void *handle_connection(void *fd_ptr)
     int fd = *((int *)fd_ptr);
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-    // Test if the socket is in non-blocking mode:
-    if (fcntl(fd, F_GETFL) & O_NONBLOCK)
-    {
-        // socket is non-blocking
-    }
 
-    // Put the socket in non-blocking mode:
-    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0)
-    {
-        // handle error
-    }
     User user; // zadeklarowanie user user;
                // wzięcie IP klienta
     getpeername(fd, (struct sockaddr *)&client_addr, &client_len);
@@ -74,7 +64,17 @@ void *handle_connection(void *fd_ptr)
         char success[] = "login successful\n";
         send(fd, success, strlen(success), 0);
     }
+    // Test if the socket is in non-blocking mode:
+    if (fcntl(fd, F_GETFL) & O_NONBLOCK)
+    {
+        // socket is non-blocking
+    }
 
+    // Put the socket in non-blocking mode:
+    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0)
+    {
+        // handle error
+    }
     while (1)
     {
         // otrzymanie danych od klienta
@@ -84,51 +84,41 @@ void *handle_connection(void *fd_ptr)
         {
             printf("Received %d bytes: %s\n", bytes_received, buffer);
         }
-        else
-        {
-            // analiza maila
-            Email email;
-            sscanf(buffer, "From: %s\nTo: %s\n%s", email.from, email.to, email.message);
+        // analiza maila
+        Email email;
+        sscanf(buffer, "From: %s\nTo: %s\n%s", email.from, email.to, email.message);
 
-            // przypisanie maila do tablicy
-            pthread_mutex_lock(&mailBox_mutex);
-            mailBox[mailCount++] = email;
-            pthread_mutex_unlock(&mailBox_mutex);
+        // przypisanie maila do tablicy
+        pthread_mutex_lock(&mailBox_mutex);
+        mailBox[mailCount++] = email;
+        pthread_mutex_unlock(&mailBox_mutex);
 
-            // wysłanie wiadomości potwierdzającej otrzymanie maila przez serwer
-            char response[] = "Mail has been received and stored";
-            send(fd, response, strlen(response), 0);
-        }
+        // wysłanie wiadomości potwierdzającej otrzymanie maila przez serwer
+        char response[] = "Mail has been received and stored";
+        send(fd, response, strlen(response), 0);
+
         // sprawdzenie czy jest mail i wysłanie go do użytkownika
         for (int i = 0; i < mailCount; i++)
         {
             if (strcmp(mailBox[i].to, user.username) == 0)
             {
-                send(user.sock_fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
-                for (int i = 0; i < mailCount; i++)
+                if (strcmp(mailBox[i].to, user.username) == 0)
                 {
-                    if (strcmp(mailBox[i].to, user.username) == 0)
+                    send(fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
+                    for (int j = i; j < mailCount - 1; j++)
                     {
-                        send(fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
-                        for (int j = i; j < mailCount - 1; j++)
-                        {
-                            mailBox[j] = mailBox[j + 1];
-                        }
-                        mailCount--;
-                        break;
+                        mailBox[j] = mailBox[j + 1];
                     }
-                    printf("Sent email to %s\n", user.username);
+                    mailCount--;
                     break;
                 }
+                printf("Sent email to %s\n", user.username);
                 break;
             }
+            break;
         }
     }
-    //mutex sam się zwolni ale zwolni się po zakończeniu programu więc chyba to potrzebuje tutaj nie? Bo to jest pętla i on będzie ciągle w tej pętli miał tego mutexa
-    //no chyba że go usunę tutaj po zakończeniu pętli
-    //usunięcie mutexów
-    pthread_mutex_destroy(&mailBox_mutex);
-    pthread_mutex_destroy(&users_mutex); 
+   
     // zamknięcie połączenia
     close(fd);
     pthread_exit(NULL);
