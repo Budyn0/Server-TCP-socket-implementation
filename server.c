@@ -95,35 +95,29 @@ void *handle_connection(void *fd_ptr)
         }
 
         // sprawdzenie czy jest mail i wysłanie go do użytkownika
+        pthread_mutex_lock(&mailBox_mutex);
         for (int i = 0; i < mailCount; i++)
         {
             if (strcmp(mailBox[i].to, user.username) == 0)
             {
-                if (strcmp(mailBox[i].to, user.username) == 0)
+                send(fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
+                for (int j = i; j < mailCount - 1; j++) // przesunięcie o 1 indeks w lewo w talbicy po wysłaniu
                 {
-                    send(fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
-                    for (int j = i; j < mailCount - 1; j++)
-                    {
-                        pthread_mutex_lock(&mailBox_mutex);
-                        mailBox[j] = mailBox[j + 1];
-                        pthread_mutex_unlock(&mailBox_mutex);
-                    }
-                    pthread_mutex_lock(&mailBox_mutex);
-                    mailCount--;
-                    pthread_mutex_unlock(&mailBox_mutex);
-                    break;
+                    mailBox[j] = mailBox[j + 1];
                 }
-                printf("Sent email to %s\n", user.username);
+                mailCount--;
                 break;
             }
-            break;
         }
+        pthread_mutex_unlock(&mailBox_mutex);
     }
-
+    
     // zamknięcie połączenia
     close(fd);
     pthread_exit(NULL);
 }
+
+
 
 int main()
 {
