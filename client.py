@@ -1,36 +1,54 @@
 import socket
 
-# create the socket
-client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# Tworzenie gniazda
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# connect to the server
-server_address = ('localhost', 2525)
-client_sock.connect(server_address)
+# Łączenie z serwerem
+server_address = ('127.0.0.1', 2525)
+print('Connecting to {}:{}'.format(*server_address))
+client_socket.connect(server_address)
 
-# login
-client_sock.send("login".encode())
-username = input("Enter your username: ")
-client_sock.send(username.encode())
+# Logowanie
+username = input('Enter your username: ')
+client_socket.sendall(username.encode())
+
+# Otrzymanie powiadomienia o pomyślnym zalogowaniu
+response = client_socket.recv(1024).decode()
+print(response)
 
 while True:
-    # display menu
-    print("1. Send email")
-    print("2. Receive emails")
-    choice = input("Enter your choice: ")
+    # Wyświetlenie menu
+    print('1. Send email')
+    print('2. Read email')
+    print('3. Exit')
+    choice = input('Enter your choice: ')
 
+    # Wysłanie wiadomości e-mail
     if choice == '1':
-        # send an email
-        from_username = username
-        to = input("Enter the recipient's username: ")
-        message = input("Enter the message: ")
-        email = f"From: {from_username}\nTo: {to}\n{message}"
-        client_sock.send(email.encode())
+        to = input('To: ')
+        message = input('Message: ')
+        email_format = 'From: {}\nTo: {}\n{}'
+        email = email_format.format(username, to, message)
+        client_socket.sendall(email.encode())
+        print('Email sent.')
+    # Odczytanie wiadomości e-mail
     elif choice == '2':
-        # receive messages from other clients
-        message = client_sock.recv(1024)
-        print(message.decode())
-    else:
-        print("Invalid choice. Please try again.")
-
-# close the socket
-client_sock.close()
+        client_socket.sendall(b'READ')
+        email_string = client_socket.recv(1024).decode()
+        if email_string != "No new mail":
+            email_parts = email_string.split("\n")
+            email = {
+                "From": email_parts[0],
+                "To": email_parts[1],
+                "Message": email_parts[2]
+            }
+            print("From: ", email["From"])
+            print("To: ", email["To"])
+            print("Message: ", email["Message"])
+        else:
+            print(email_string)
+    # Wyjście
+    elif choice == '3':
+        client_socket.sendall(b'EXIT')
+        print('Exiting...')
+        break
