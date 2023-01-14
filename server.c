@@ -46,21 +46,21 @@ void *handle_connection(void *fd_ptr)
     inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
     printf("Connection from %s\n", client_ip);
     // Login
-        char username[256];
-        int bytes_received = recv(fd, username, sizeof(username), 0);
-        if (bytes_received > 0)
-        {
-            strcpy(user.username, username);
-            strcpy(user.ip, client_ip);
-            user.sock_fd = fd;
-            pthread_mutex_lock(&users_mutex);
-            users[userCount++] = user;
-            pthread_mutex_unlock(&users_mutex);
-            printf("%s logged in\n", username);
-        }
-        // wiadomość powodzenia logowania
-        char success[] = "login successful\n";
-        send(fd, success, strlen(success), 0);
+    char username[256];
+    int bytes_received = recv(fd, username, sizeof(username), 0);
+    if (bytes_received > 0)
+    {
+        strcpy(user.username, username);
+        strcpy(user.ip, client_ip);
+        user.sock_fd = fd;
+        pthread_mutex_lock(&users_mutex);
+        users[userCount++] = user;
+        pthread_mutex_unlock(&users_mutex);
+        printf("%s logged in\n", username);
+    }
+    // wiadomość powodzenia logowania
+    char success[] = "login successful\n";
+    send(fd, success, strlen(success), 0);
     // Test if the socket is in non-blocking mode:
     if (fcntl(fd, F_GETFL) & O_NONBLOCK)
     {
@@ -80,19 +80,19 @@ void *handle_connection(void *fd_ptr)
         if (bytes_received > 0)
         {
             printf("Received %d bytes: %s\n", bytes_received, buffer);
+            // analiza maila
+            Email email;
+            sscanf(buffer, "From: %s\nTo: %s\n%s", email.from, email.to, email.message);
+
+            // przypisanie maila do tablicy
+            pthread_mutex_lock(&mailBox_mutex);
+            mailBox[mailCount++] = email;
+            pthread_mutex_unlock(&mailBox_mutex);
+
+            // wysłanie wiadomości potwierdzającej otrzymanie maila przez serwer
+            char response[] = "Mail has been received and stored";
+            send(fd, response, strlen(response), 0);
         }
-        // analiza maila
-        Email email;
-        sscanf(buffer, "From: %s\nTo: %s\n%s", email.from, email.to, email.message);
-
-        // przypisanie maila do tablicy
-        pthread_mutex_lock(&mailBox_mutex);
-        mailBox[mailCount++] = email;
-        pthread_mutex_unlock(&mailBox_mutex);
-
-        // wysłanie wiadomości potwierdzającej otrzymanie maila przez serwer
-        char response[] = "Mail has been received and stored";
-        send(fd, response, strlen(response), 0);
 
         // sprawdzenie czy jest mail i wysłanie go do użytkownika
         for (int i = 0; i < mailCount; i++)
