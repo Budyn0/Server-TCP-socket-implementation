@@ -8,8 +8,10 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 
-#define PORT 2525          // port
+#define PORT 2525          // portclient
+#define PORT_SERVER 3525   // portserver
 #define MAX_CONNECTIONS 10 // max połączeń
+#define MAX_SERVERS 5      // max serverow
 
 // magazyn dla wiadomości
 typedef struct
@@ -33,9 +35,22 @@ pthread_mutex_t users_mutex = PTHREAD_MUTEX_INITIALIZER;
 User users[MAX_CONNECTIONS]; // tablica użytkowników
 int userCount = 0;           // przechowanie ilości użytkowników
 
-void *handle_connection(void *fd_ptr)
+struct thread_args
 {
-    int fd = *((int *)fd_ptr);
+    volatile int fd;
+    char *mail_server;
+};
+
+// void *handle_client_connection(void *fd_ptr)
+void *handle_client_connection(void *args)
+{
+    // int fd = *((int *)fd_ptr);
+    struct thread_args *params = args;
+    int fd = params->fd;
+    char *mail = params->mail_server;
+
+    printf("[client] New client connection thread (local mail server: %s)\n", mail);
+
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
 
@@ -44,7 +59,8 @@ void *handle_connection(void *fd_ptr)
     getpeername(fd, (struct sockaddr *)&client_addr, &client_len);
     char client_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
-    printf("Connection from %s\n", client_ip);
+    printf("[client] Connection from %s\n", client_ip);
+
     // Login
     char username[256];
     int bytes_received = recv(fd, username, sizeof(username), 0);
@@ -56,7 +72,7 @@ void *handle_connection(void *fd_ptr)
         pthread_mutex_lock(&users_mutex);
         users[userCount++] = user;
         pthread_mutex_unlock(&users_mutex);
-        printf("%s logged in\n", username);
+        printf("[client] %s logged in\n", username);
     }
     // wiadomość powodzenia logowania
     char success[] = "login successful\n";
@@ -72,14 +88,16 @@ void *handle_connection(void *fd_ptr)
     {
         // handle error
     }
+
+    char buffer[1024];
     while (1)
     {
+        bzero(buffer, 1024);
         // otrzymanie danych od klienta
-        char buffer[1024];
         int bytes_received = recv(fd, buffer, sizeof(buffer), 0);
         if (bytes_received > 0)
         {
-            printf("Received %d bytes: %s\n", bytes_received, buffer);
+            printf("[client] Received %d bytes: %s\n", bytes_received, buffer);
             // analiza maila
             Email email;
             sscanf(buffer, "From: %s\nTo: %s\n%s", email.from, email.to, email.message);
@@ -96,10 +114,16 @@ void *handle_connection(void *fd_ptr)
 
         // sprawdzenie czy jest mail i wysłanie go do użytkownika
         pthread_mutex_lock(&mailBox_mutex);
+        if (mailCount > 0)
+        {
+            //printf("[client] Mail counts %d\n", mailCount);
+        }
         for (int i = 0; i < mailCount; i++)
         {
-            if (strcmp(mailBox[i].to, user.username) == 0)
+            //if (strcmp(mailBox[i].to, user.username) == 0)
+            if (strstr(mailBox[i].to, user.username) != NULL)
             {
+                printf("[client] New mail found to %s\n", user.username);
                 send(fd, mailBox[i].message, sizeof(mailBox[i].message), 0);
                 for (int j = i; j < mailCount - 1; j++) // przesunięcie o 1 indeks w lewo w talbicy po wysłaniu
                 {
@@ -115,60 +139,304 @@ void *handle_connection(void *fd_ptr)
     pthread_exit(NULL);
 }
 
-
-int main()
+void *handle_server_recv_connection(void *args)
 {
-    int sock_fd, new_sock_fd;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_len;
+    // recv connection thread is based on the incomming connection (accept)
+    // after establishing connection, local server returns it's mail address
+    // receive list of mails to @serverA.pl
+
+    struct thread_args *params = args;
+    int fd = params->fd;
+    char *mail = params->mail_server;
+
+    // set socket to the blocking mode..
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+
+    char local_mail_address[256];
+    strcpy(local_mail_address, mail);
+    printf("[server-recv] New server recv connection thread (local mail address: %s), fd: %d.. sending mail address\n", local_mail_address, fd);
+
+    // send local mail adress - I am XYZ
+    int bytes_sent = send(fd, local_mail_address, strlen(local_mail_address), 0);
+    printf("[server-recv] sent %d bytes\n", bytes_sent);
+    if (bytes_sent < 0)
+    {
+        printf("[server-recv] error while sending mail address.. closing connection\n");
+        close(fd);
+        pthread_exit(NULL);
+    }
+
+    printf("[server-recv] Waiting for new messages from remote server to %s..\n", local_mail_address);
+    while (1)
+    {
+        Email new_mail;
+        // otrzymanie danych od klienta
+        int bytes_received = recv(fd, (void *)&new_mail, sizeof(new_mail), 0);
+        if (bytes_received > 0)
+        {
+            printf("[server-recv] Received %d bytes\n", bytes_received);
+
+            // przypisanie maila do tablicy
+            pthread_mutex_lock(&mailBox_mutex);
+            mailBox[mailCount++] = new_mail;
+            pthread_mutex_unlock(&mailBox_mutex);
+        }
+
+        sleep(1);
+    }
+
+    // zamknięcie połączenia
+    close(fd);
+    pthread_exit(NULL);
+}
+
+void *handle_server_send_connection(void *args)
+{
+    // send connection thread is based on the outcomming connections (connect)
+
+    // after connect, remote server must return it's mail address, e.g. @serverB.pl
+
+    // iterate over mailbox, look for mail address & send those which are for this mailbox server
+    // send mails to mail address, e.g. @serverB.pl
+
+    struct thread_args *params = args;
+    int fd = params->fd;
+    char *mail = params->mail_server;
+
+    // set socket to the blocking mode..
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+
+    printf("[server-send] New server send connection thread (local mail address: %s), fd: %d\n", mail, fd);
+
+    // get remote mail adress - with whom am I talking to ?
+    char remote_mail_address[256];
+    int bytes_received = recv(fd, remote_mail_address, sizeof(remote_mail_address), 0);
+    printf("[server-send] received %d bytes\n", bytes_received);
+    if (bytes_received < 0)
+    {
+        printf("[server-send] error while receiving the remote mail address.. closing connection\n");
+        close(fd);
+        pthread_exit(NULL);
+    }
+    printf("[server-send] Connection with remote server established [ local mail address: %s, remote mail address: %s]\n", mail, remote_mail_address);
+
+    printf("[server-send] Waiting for new messages from clients remote to %s..\n", remote_mail_address);
+    while (1)
+    {
+        // sprawdzenie czy jest mail do tego servera.. i wysłanie go
+        pthread_mutex_lock(&mailBox_mutex);
+        for (int i = 0; i < mailCount; i++)
+        {
+            // if (strcmp(mailBox[i].to, user.username) == 0)
+            if (strstr(mailBox[i].to, remote_mail_address) != NULL)
+            {
+                printf("[server-send] New mails to %s found.. sending\n", remote_mail_address);
+                int bytes_sent = send(fd, (void *)&mailBox[i], sizeof(mailBox[i]), 0);
+                printf("[server-send] New mails to %s found.. sent %d bytes\n", remote_mail_address, bytes_sent);
+                for (int j = i; j < mailCount - 1; j++) // przesunięcie o 1 indeks w lewo w talbicy po wysłaniu
+                {
+                    mailBox[j] = mailBox[j + 1];
+                }
+                mailCount--;
+            }
+        }
+        pthread_mutex_unlock(&mailBox_mutex);
+
+        sleep(1);
+    }
+
+    // zamknięcie połączenia
+    close(fd);
+    pthread_exit(NULL);
+}
+
+int create_listen_socket(int port, int max_connections)
+{
+    int sock_fd;
+    struct sockaddr_in server_addr;
 
     // tworzenie socketu
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd < 0)
     {
-        perror("socket error");
+        printf("[create_listen_socket, port: %d] socket error", port);
         exit(1);
+    }
+
+    if (!(fcntl(sock_fd, F_GETFL) & O_NONBLOCK))
+    {
+        // Put the socket in non-blocking mode:
+        fcntl(sock_fd, F_SETFL, fcntl(sock_fd, F_GETFL) | O_NONBLOCK);
     }
 
     // Konfiguracja adresu i portu
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY; // inet_addr("127.0.0.1")
-    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(port);
 
     // Bind socketu do adresu i portu
     if (bind(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
-        perror("bind error");
+        // printf("[create_listen_socket, port: %d] bind error", port);
+        perror("bind");
         exit(1);
     }
 
     // Nasłuchiwanie połączenia
-    if (listen(sock_fd, MAX_CONNECTIONS) < 0)
+    if (listen(sock_fd, max_connections) < 0)
     {
-        perror("listen error");
+        printf("[create_listen_socket, port: %d] listen error", port);
         exit(1);
     }
+
+    printf("[create_listen_socket, port: %d] Listening started on port %d\n", port, port);
+
+    return sock_fd;
+}
+
+int create_server_connection(char *ip, int port)
+{
+    int connfd;
+    struct sockaddr_in servaddr;
+
+    // socket create and verification
+    connfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (connfd == -1)
+    {
+        printf("[create_server_connection] connection socket creation failed...\n");
+        exit(0);
+    }
+    bzero(&servaddr, sizeof(servaddr));
+
+    // assign IP, PORT
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = inet_addr(ip);
+    servaddr.sin_port = htons(port);
+
+    // connect the client socket to server socket
+    if (connect(connfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+    {
+        // printf("connection with the server %s:%d failed...\n", ip, port);
+        close(connfd);
+        return -1;
+    }
+    else
+    {
+        printf("[create_server_connection] connected to the server.. %s:%d \n", ip, port);
+    }
+
+    return connfd;
+}
+
+int main(int argc, char *argv[])
+{
+
+    int opt;
+    // char *servers[MAX_SERVERS]; // [192.168.100.4, 192.168.100.5, 192.168.100.6]
+    char *remote_server_ip = NULL;
+    char *mail_server_address = NULL;
+
+    while ((opt = getopt(argc, argv, "a:r:")) != -1)
+    {
+        switch (opt)
+        {
+        case 'a':
+            mail_server_address = optarg;
+            break;
+        case 'r':
+            remote_server_ip = optarg;
+            break;
+        default:
+            fprintf(stderr, "Usage: %s [-r remote server ip]\n", argv[0]);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    printf("------\n");
+    printf("REMOTE IP ADDRESS: %s\n", remote_server_ip);
+    printf("LOCAL MAIL SERVER: %s\n", mail_server_address);
+    printf("------\n");
+
+    int sock_fd_server = create_listen_socket(PORT_SERVER, MAX_CONNECTIONS);
+    int sock_fd_client = create_listen_socket(PORT, MAX_CONNECTIONS);
+
+    volatile int remote_server_connfd = 0;
 
     // pętla serwera
     while (1)
     {
-        client_len = sizeof(client_addr);
-        // akceptowanie połączenia
-        new_sock_fd = accept(sock_fd, (struct sockaddr *)&client_addr, &client_len);
-        if (new_sock_fd < 0)
+        /**
+         *   SERVER <-> SERVER
+         */
+        // nawiazywanie polaczenia z serverem
+        if (remote_server_connfd <= 0)
         {
-            perror("accept error");
-            continue;
+            printf("connecting to the remote server.. %s:%d\n", remote_server_ip, PORT_SERVER);
+            remote_server_connfd = create_server_connection(remote_server_ip, PORT_SERVER);
+            if (remote_server_connfd > 0)
+            {
+                // Tworzenie threda dla kazdego połączenia z remote serverem
+                pthread_t thread;
+                volatile struct thread_args args;
+                args.fd = remote_server_connfd;
+                args.mail_server = mail_server_address;
+                int ret = pthread_create(&thread, NULL, handle_server_send_connection, (void *)&args);
+                if (ret != 0)
+                {
+                    printf("Error creating client connection thread: error code %d\n", ret);
+                    close(remote_server_connfd);
+                }
+            }
         }
-        // Tworzenie threda dla kazdego połączenia
-        pthread_t thread;
-        int ret = pthread_create(&thread, NULL, handle_connection, (void *)&new_sock_fd);
-        if (ret != 0)
+
+        // akceptowanie połączenia servera
+        volatile int new_server_sock_fd;
+        struct sockaddr_in server_addr;
+        socklen_t server_len = sizeof(server_addr);
+        new_server_sock_fd = accept(sock_fd_server, (struct sockaddr *)&server_addr, &server_len);
+
+        if (new_server_sock_fd > 0)
         {
-            printf("Error creating thread: error code %d\n", ret);
-            close(new_sock_fd);
+            // Tworzenie threda dla kazdego połączenia
+            pthread_t thread;
+            volatile struct thread_args args;
+            args.fd = new_server_sock_fd;
+            args.mail_server = mail_server_address;
+            int ret = pthread_create(&thread, NULL, handle_server_recv_connection, (void *)&args);
+            if (ret != 0)
+            {
+                printf("Error creating server thread: error code %d\n", ret);
+                close(new_server_sock_fd);
+            }
         }
+
+        /**
+         *   CLIENT -> SERVER
+         */
+        // akceptowanie połączenia clienta
+        volatile int new_client_sock_fd;
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        new_client_sock_fd = accept(sock_fd_client, (struct sockaddr *)&client_addr, &client_len);
+
+        if (new_client_sock_fd > 0)
+        {
+            // Tworzenie threda dla kazdego połączenia
+            pthread_t thread;
+            volatile struct thread_args args;
+            args.fd = new_client_sock_fd;
+            args.mail_server = mail_server_address;
+            int ret = pthread_create(&thread, NULL, handle_client_connection, (void *)&args);
+            if (ret != 0)
+            {
+                printf("Error creating client connection thread: error code %d\n", ret);
+                close(new_client_sock_fd);
+            }
+        }
+
+        sleep(2);
     }
+
     return 0;
 }
