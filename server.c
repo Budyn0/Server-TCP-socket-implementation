@@ -141,22 +141,22 @@ void *handle_client_connection(void *args)
 
 void *handle_server_recv_connection(void *args)
 {
-    // recv connection thread is based on the incomming connection (accept)
-    // after establishing connection, local server returns it's mail address
-    // receive list of mails to @serverA.pl
+    // wątek połączenia recv jest oparty na połączeniu przychodzącym (accept)
+    // po nawiązaniu połączenia, lokalny serwer zwraca swój adres pocztowy
+    // odbieramy listę maili do @serverA.pl
 
     struct thread_args *params = args;
     int fd = params->fd;
     char *mail = params->mail_server;
 
-    // set socket to the blocking mode..
+    // ustawiamy gniazdo w tryb blokowania...
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
 
     char local_mail_address[256];
     strcpy(local_mail_address, mail);
     printf("[server-recv] New server recv connection thread (local mail address: %s), fd: %d.. sending mail address\n", local_mail_address, fd);
 
-    // send local mail adress - I am XYZ
+    // wyślij lokalny adres pocztowy - jestem XYZ
     int bytes_sent = send(fd, local_mail_address, strlen(local_mail_address), 0);
     printf("[server-recv] sent %d bytes\n", bytes_sent);
     if (bytes_sent < 0)
@@ -192,12 +192,12 @@ void *handle_server_recv_connection(void *args)
 
 void *handle_server_send_connection(void *args)
 {
-    // send connection thread is based on the outcomming connections (connect)
+    // wątek połączenia send jest oparty na połączeniach wychodzących (connect)
 
-    // after connect, remote server must return it's mail address, e.g. @serverB.pl
+    // po połączeniu serwer zdalny musi zwrócić swój adres pocztowy, np. @serverB.pl
 
-    // iterate over mailbox, look for mail address & send those which are for this mailbox server
-    // send mails to mail address, e.g. @serverB.pl
+    //@serverB.pl iterujemy po skrzynkach, szukamy adresów pocztowych i wysyłamy te które są dla tego serwera
+    // wysyłamy maile na adres pocztowy, np. @serverB.pl
 
     struct thread_args *params = args;
     int fd = params->fd;
@@ -208,7 +208,7 @@ void *handle_server_send_connection(void *args)
 
     printf("[server-send] New server send connection thread (local mail address: %s), fd: %d\n", mail, fd);
 
-    // get remote mail adress - with whom am I talking to ?
+    // get remote mail adress - z kim rozmawiam ?
     char remote_mail_address[256];
     int bytes_received = recv(fd, remote_mail_address, sizeof(remote_mail_address), 0);
     printf("[server-send] received %d bytes\n", bytes_received);
@@ -300,7 +300,7 @@ int create_server_connection(char *ip, int port)
     int connfd;
     struct sockaddr_in servaddr;
 
-    // socket create and verification
+    // tworzenie i weryfikacja gniazda
     connfd = socket(AF_INET, SOCK_STREAM, 0);
     if (connfd == -1)
     {
@@ -314,7 +314,7 @@ int create_server_connection(char *ip, int port)
     servaddr.sin_addr.s_addr = inet_addr(ip);
     servaddr.sin_port = htons(port);
 
-    // connect the client socket to server socket
+    // połączenie gniazda klienta z gniazdem serwera
     if (connect(connfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
     {
         // printf("connection with the server %s:%d failed...\n", ip, port);
