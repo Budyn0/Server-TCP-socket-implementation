@@ -2,7 +2,7 @@ import socket
 
 def client():
     # Tworzenie gniazda
-    client_socket = socket.socket(socket.AF_INET, socket.SOCKSTREAM)
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Podanie adresu IP serwera
     server = input("Enter IP of the server: ")
@@ -44,5 +44,5 @@ def client():
     # Zakończenie połączenia
     client_socket.close()
 
-if name == 'main':
+if __name__ == '__main__':
     client()
